@@ -31,7 +31,23 @@ describe('App', () => {
 
     const layout = harness.routeNativeElement as HTMLElement;
     expect(layout.querySelector('.qits-layout-brand')?.textContent).toContain('qits');
-    expect(layout.querySelectorAll('.qits-layout-link')).toHaveLength(6);
+    expect(layout.querySelectorAll('.qits-layout-link')).toHaveLength(7);
     expect(layout.querySelector('.qits-layout-content router-outlet')).not.toBeNull();
+  });
+
+  it('marks its own door — /events/ — as the current one', async () => {
+    // The layout reads the *document's* base URI, not the router, to decide which SPA it is; this
+    // app is served under `<base href="/events/">`, so the test document has to say the same.
+    document.head.appendChild(Object.assign(document.createElement('base'), { href: '/events/' }));
+    try {
+      const harness = await RouterTestingHarness.create('/');
+
+      const layout = harness.routeNativeElement as HTMLElement;
+      const current = layout.querySelectorAll('.qits-layout-link[aria-current="page"]');
+      expect(current).toHaveLength(1);
+      expect(current[0].textContent?.trim()).toBe('Events');
+    } finally {
+      document.head.querySelector('base')?.remove();
+    }
   });
 });
