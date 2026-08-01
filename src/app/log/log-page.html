@@ -1,0 +1,132 @@
+<header class="head">
+  <div>
+    <h1>Events</h1>
+    <p class="lede">
+      What has been happening on the platform, newest first. {{ lede() }} Read-only: nothing here
+      writes, republishes or deletes an event.
+    </p>
+  </div>
+  <!-- The live tail's toggle and its connected/stale marker mount here. -->
+  <qits-button variant="secondary" size="sm" (pressed)="reload()">Refresh</qits-button>
+</header>
+
+<section class="filters" aria-label="Filters">
+  <app-name-filter
+    [vocabulary]="vocabulary()"
+    [selected]="selectedNames()"
+    (selectedChange)="setNames($event)"
+    (retry)="loadVocabulary()"
+  />
+
+  <app-time-range [since]="since()" (sinceChange)="setSince($event)" />
+
+  <fieldset class="search">
+    <legend>Search payload</legend>
+    <label class="field" for="log-search">
+      <span class="sr">A substring of the payload</span>
+      <input
+        id="log-search"
+        type="search"
+        placeholder="qits-stt"
+        [value]="search() ?? ''"
+        (change)="setSearch($event)"
+      />
+    </label>
+    <p class="hint">
+      Matches the payload text, so it finds a repository under either of the two keys it is written
+      under — and a version or a package name that happens to contain the same letters.
+    </p>
+  </fieldset>
+</section>
+
+@if (windowStart()) {
+  <p class="window">
+    This window starts partway down the log, at the position the address carries.
+    <button type="button" class="link" (click)="toNewest()">Back to the newest</button>
+  </p>
+}
+
+<app-async
+  [state]="log()"
+  loadingLabel="Loading the log"
+  errorLabel="Could not load the log"
+  (retry)="reload()"
+/>
+
+@if (log().kind === 'ready') {
+  <div class="scroll">
+    <table>
+      <thead>
+        <tr>
+          <th scope="col">Time (UTC)</th>
+          <th scope="col">Name</th>
+          <th scope="col">Repository</th>
+          <th scope="col">Summary</th>
+          <th scope="col">Cause</th>
+        </tr>
+      </thead>
+      <tbody>
+        @for (row of rows(); track row.event.id) {
+          <tr>
+            <th scope="row">
+              <a [routerLink]="['/events', row.event.id]">{{
+                formatDayTime(row.event.occurredAt)
+              }}</a>
+            </th>
+            <td><qits-badge [label]="row.event.name" [tone]="tone(row.event.name)" /></td>
+            <td>{{ row.gist.repository ?? NONE }}</td>
+            <td class="gist">{{ row.gist.summary }}</td>
+            <td>
+              @if (row.event.parentId; as parentId) {
+                <a class="mono" [routerLink]="['/events', parentId]">{{ shortId(parentId) }}</a>
+              } @else {
+                <span class="subtle">{{ NONE }}</span>
+              }
+            </td>
+          </tr>
+        } @empty {
+          <tr>
+            <td colspan="5">
+              @if (filtered()) {
+                <app-empty message="No event matches these filters." />
+              } @else {
+                <app-empty message="The log holds no events at all." />
+              }
+            </td>
+          </tr>
+        }
+      </tbody>
+      <tfoot>
+        <tr>
+          <td colspan="5">
+            The cause column links to the event that caused this one. It never counts what an event
+            caused: that would be one request per row, and a count taken from the rows on screen
+            would be right in the middle of a page and wrong at both edges.
+          </td>
+        </tr>
+      </tfoot>
+    </table>
+  </div>
+
+  <div class="more">
+    <app-async [state]="appending()" errorLabel="Could not load more" (retry)="loadMore()" />
+    @if (nextCursor()) {
+      <qits-button
+        variant="secondary"
+        size="sm"
+        [busy]="appending().kind === 'loading'"
+        (pressed)="loadMore()"
+        >Load more</qits-button
+      >
+    } @else if (rows().length > 0 && !capped()) {
+      <p class="note">That is the end of the log.</p>
+    }
+    @if (capped()) {
+      <p class="note">
+        The server answered with more events than were asked for and paged none of them, so the
+        newest {{ pageSize }} are drawn. Paging lands with the events service; nothing here changes
+        on the day it does.
+      </p>
+    }
+  </div>
+}

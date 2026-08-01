@@ -3,16 +3,24 @@
 The event log's frontend: the read-only view of what has happened on this platform and what caused
 what. Served by qits-events itself at `/events/` through Quinoa. No forms, no writes at all.
 
-**The pages are not built yet.** This repository currently holds the foundation the pages mount
-into — the API client, the live stream's transport, the shared UI plumbing, the routes, and two
-honest placeholders. `/events/` and `/events/events/<id>` both answer today and both say so.
+**The log is built; the event page is not yet.** `/events/` is the real screen. `/events/events/<id>`
+answers with an honest placeholder that carries the id, and the live tail is not wired into the log
+yet — the transport is here and the page has a marked seam for it.
 
-## The screens, as they will be
+## The screens
 
 - **`/events/`** — the log. Reverse-chronological, filterable by name, by time floor and by payload
-  search, with a live tail. Budget: **2 requests and one socket, and nothing per row.** Everything a
-  row draws arrives with the row; "this had a cause" is free because `parentId` is on it, and "this
-  caused N" is deliberately not drawn, because it would be one request per row.
+  search, with a live tail to come. Budget: **2 requests and one socket, and nothing per row.**
+  Everything a row draws arrives with the row; "this had a cause" is free because `parentId` is on
+  it, and "this caused N" is deliberately not drawn, because it would be one request per row.
+
+  Every filter is a query parameter and every filter is server-side — `?name=`, `?since=`, `?q=` —
+  so the view is bookmarkable and the back button undoes a filter. Nothing is ever filtered out of
+  rows already fetched: against today's server that means a filter appears not to work rather than
+  quietly lying about how much the store holds. `?cursor=` is where the reader got to, written by
+  "load more" over the address rather than pushed onto it; reopening such an address resumes at that
+  cursor in **one** request, so the window then starts partway down the log and the page says so.
+
 - **`/events/events/<id>`** — one event, its payload, and the whole causation component it belongs
   to: walked up to the root by `parentId` and drawn down from there, with the arrived-at event
   marked. Budget: **`1 + U + D`** — 2 requests for a root with no children, 8 for the largest graph
@@ -75,9 +83,23 @@ ever draws one, the push path becomes lossy and this decision must be revisited 
 ## Layout
 
     src/app/api/     the wire shapes, one injectable over HttpClient, and the socket's own seam
-    src/app/ui/      Loadable, Async, Empty, the shared page stylesheet, the formatters
-    src/app/log/     the log page
+    src/app/ui/      Loadable, Async, Empty, the shared page stylesheet, the formatters, TimeRange
+    src/app/log/     the log page, its name filter and its per-name row summaries
     src/app/event/   one event and its chain
+
+`src/app/ui/time-range.ts` is the "last hour / last 24h / custom" control, and it is **local on
+purpose**: the observability UI wants the same thing, but every SPA pins `@qits/ui-components` at
+`^0.0.4` while the library publishes calver, so a component added there today reaches no application
+at all. It is a promotion candidate, not a local fork of something shared. A preset writes an
+absolute instant rather than a phrase, so a shared link means one window rather than a different one
+each time it is opened.
+
+`src/app/log/event-summary.ts` gives each known event name a bespoke one-line gist —
+`BuildSuccessful`, `SCMRelease`, `SoftwareRelease` — and anything else the first three `key=value`
+pairs of its payload. **The fallback is the feature.** New names are born in a Java service and in no
+SPA's release cycle, so a fourth event type has to be legible the day it first fires. The repository
+gets its own column because it is written under `repoId` on builds and `repository` on releases, and
+a log of 127 identical names that does not say which repository is a wall of one word.
 
 `src/app/api/` holds hand-written interfaces mirroring the service's wire shapes. Nothing is
 generated: the platform generates documents rather than clients.
