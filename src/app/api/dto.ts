@@ -52,6 +52,22 @@ export interface EventsResponse {
 }
 
 /**
+ * The single-event envelope.
+ *
+ * `GET /events/api/events/{id}` answers `{"event": …}` and **not the event itself** — measured on
+ * the live service and written that way in `EventController.get`, whose response record holds one
+ * field named `event`. The list route's envelope is `events`/`nextCursor` and the vocabulary's is
+ * `names`, so every route here is enveloped and this one is no exception; it only looks like one
+ * because a single object could plausibly have been the whole body.
+ *
+ * The difference is invisible to a type assertion and total at runtime: a client that reads the
+ * body as an event gets an object whose every field is `undefined`, with no error anywhere.
+ */
+export interface EventResponse {
+  readonly event: EventDto;
+}
+
+/**
  * The vocabulary: every distinct `name` in the log, sorted.
  *
  * It exists so the filter can be populated without fetching all of history — which is the thing

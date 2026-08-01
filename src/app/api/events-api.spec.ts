@@ -95,9 +95,12 @@ describe('EventsApi', () => {
     });
   });
 
-  it('reads one event whole, its own timestamps included', async () => {
+  it('unwraps one event from its envelope, its own timestamps included', async () => {
     const one = api.get(event.id);
-    http.expectOne(`/events/api/events/${event.id}`).flush(event);
+    // The body is `{"event": …}`, not the event: measured on the live service and written that way
+    // in `EventController.get`. Flushing the bare event here would let a client that never unwraps
+    // pass this spec and return an object with every field undefined against the real one.
+    http.expectOne(`/events/api/events/${event.id}`).flush({ event });
     await expect(one).resolves.toMatchObject({ id: event.id, createdAt: event.createdAt });
   });
 

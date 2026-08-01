@@ -1,0 +1,202 @@
+<p class="crumbs">
+  <a routerLink="/">Events</a><span class="sep">/</span
+  ><span class="mono">{{ shortId(eventId()) }}</span>
+</p>
+
+<app-async
+  [state]="event()"
+  loadingLabel="Loading the event"
+  errorLabel="Could not load the event"
+  (retry)="reload()"
+/>
+
+@if (loaded(); as event) {
+  <header class="head">
+    <div>
+      <h1>{{ event.name }}</h1>
+      <p class="lede">
+        @if (gist(); as gist) {
+          {{ gist.repository ?? 'No repository named' }} · {{ gist.summary }}
+        }
+      </p>
+    </div>
+    <qits-badge [label]="event.name" [tone]="tone(event.name)" />
+  </header>
+
+  <dl class="facts">
+    <dt>Occurred</dt>
+    <dd>
+      {{ formatInstant(event.occurredAt) }}
+      <span class="mono subtle">{{ exactInstant(event.occurredAt) }}</span>
+    </dd>
+
+    <dt>Recorded</dt>
+    <dd>{{ formatInstant(event.createdAt) }}</dd>
+
+    <dt>Updated</dt>
+    <dd>{{ formatInstant(event.updatedAt) }}</dd>
+
+    <dt>Id</dt>
+    <dd class="mono">{{ event.id }}</dd>
+
+    <dt>Cause</dt>
+    <dd>
+      @if (event.parentId; as parentId) {
+        <a class="mono" [routerLink]="['/events', parentId]">{{ parentId }}</a>
+      } @else {
+        <span class="subtle">Nothing in the log caused this event.</span>
+      }
+    </dd>
+
+    <dt>Description</dt>
+    <dd>
+      @if (event.description) {
+        <span>{{ event.description }}</span>
+      } @else {
+        <span class="subtle">{{ NONE }}</span>
+      }
+    </dd>
+  </dl>
+
+  <p class="note">
+    Occurred is the time the publisher stamped and Recorded is this database's own. They disagree by
+    as much as eight minutes on the live store, and everything is drawn in UTC. The exact instant is
+    printed unparsed beside it, because a fork's siblings are recognised by sharing one to the
+    microsecond.
+  </p>
+
+  <section class="block">
+    <h2>Payload</h2>
+    @switch (payloadKind()) {
+      @case ('json') {
+        <pre class="payload mono"><code>{{ payloadText() }}</code></pre>
+        <p class="note">
+          The whole payload, pretty-printed with its keys sorted — the canonical reading of the same
+          bytes the publisher sent. Nothing is truncated and nothing is left out.
+        </p>
+      }
+      @case ('raw') {
+        <pre class="payload mono"><code>{{ payloadText() }}</code></pre>
+        <p class="note">
+          This payload is not JSON. The service stores whatever it was given, byte for byte, and the
+          hand-recorded path accepts any string — so it is shown exactly as it arrived.
+        </p>
+      }
+      @default {
+        <p class="empty">This event carries no payload.</p>
+        <p class="note">
+          A payload is optional and permanently so: an event recorded by hand is honestly nothing
+          but a name and a time.
+        </p>
+      }
+    }
+  </section>
+
+  <section class="block">
+    <h2>Chain</h2>
+
+    <app-async
+      [state]="chain()"
+      loadingLabel="Walking the chain"
+      errorLabel="Could not walk the chain"
+      (retry)="retryChain()"
+    />
+
+    @if (chain().kind === 'ready') {
+      @if (start(); as start) {
+        <p class="start">
+          @switch (start.kind) {
+            @case ('dangling') {
+              Cause not in the log (<span class="mono">{{ shortId(start.parentId) }}</span
+              >). The event below names a cause this log does not hold — deleted, or never published
+              — so the chain starts there. That is the honest reading and not an error.
+            }
+            @case ('cycle') {
+              The chain loops: the event below names
+              <span class="mono">{{ shortId(start.parentId) }}</span> as its cause, which is already
+              on this walk. Nothing on the service prevents a loop, so the walk stopped here.
+            }
+            @case ('capped') {
+              The walk stopped after {{ upHopCap }} hops upward, still short of a root. There is
+              more above <span class="mono">{{ shortId(start.parentId) }}</span> that is not drawn.
+            }
+          }
+        </p>
+      }
+
+      <div class="scroll">
+        <table>
+          <caption>
+            {{
+              chainLede()
+            }}
+          </caption>
+          <thead>
+            <tr>
+              <th scope="col">Time (UTC)</th>
+              <th scope="col">Event</th>
+              <th scope="col">Repository</th>
+              <th scope="col">Summary</th>
+            </tr>
+          </thead>
+          <tbody>
+            @for (line of lines(); track $index) {
+              @if (line.event; as event) {
+                <tr [class.current]="line.current" [attr.aria-current]="line.current || null">
+                  <th scope="row">
+                    @if (line.current) {
+                      <span>{{ formatDayTime(event.occurredAt) }}</span>
+                    } @else {
+                      <a [routerLink]="['/events', event.id]">{{
+                        formatDayTime(event.occurredAt)
+                      }}</a>
+                    }
+                  </th>
+                  <td [style.padding-left.rem]="line.depth * 1.1">
+                    <qits-badge [label]="event.name" [tone]="tone(event.name)" />
+                    @if (line.current) {
+                      <span class="here">this event</span>
+                    }
+                  </td>
+                  <td>{{ line.repository ?? NONE }}</td>
+                  <td class="gist">{{ line.summary }}</td>
+                </tr>
+              } @else {
+                <tr>
+                  <td colspan="4" class="statement" [style.padding-left.rem]="line.depth * 1.1">
+                    @if (line.kind === 'loop') {
+                      Loops back to <span class="mono">{{ shortId(line.loopId ?? '') }}</span
+                      >, already drawn above. The walk stopped rather than going round again.
+                    } @else {
+                      The walk stopped at depth {{ downDepthCap }}. Whatever the event above caused
+                      was not asked for.
+                    }
+                  </td>
+                </tr>
+              }
+            }
+          </tbody>
+          <tfoot>
+            <tr>
+              <td colspan="4">
+                The whole causation this event sits in: up to the start by cause, then down from
+                there, with branches drawn as branches. It cost one request for the event and
+                {{ chainCost() }} for the walk — one per hop up, one per event below. The walk is
+                bounded at {{ upHopCap }} hops up, {{ downDepthCap }} levels down and
+                {{ downNodeCap }} events drawn, and every bound it reaches says so on its own line.
+              </td>
+            </tr>
+          </tfoot>
+        </table>
+      </div>
+
+      @if (capped()) {
+        <p class="note">
+          The walk stopped at {{ downNodeCap }} events, which is its cap on one graph. What the
+          deepest events here caused was not asked for, so this is part of the causation and not all
+          of it.
+        </p>
+      }
+    }
+  </section>
+}

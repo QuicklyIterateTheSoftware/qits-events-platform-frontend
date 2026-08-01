@@ -1,0 +1,117 @@
+/* The three blocks under the heading: the facts, the payload, and the chain. The table itself is
+   `ui/page.css`; only what this page adds to it is here.
+
+   The chain is a table and not a drawn tree on purpose. Rows indent by depth, which is enough to
+   read a fork — two siblings at one indent under one parent — and it keeps every node in the same
+   four columns the log uses, so an event says the same thing in both places. Connector lines would
+   be a second rendering of information the indent already carries, and they would not survive the
+   horizontal scroll these tables need. */
+
+/* Label above value on a phone, two columns from the point where the labels stop crowding. */
+.facts {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 0.1rem 1rem;
+  margin: 0 0 0.5rem;
+}
+
+@media (min-width: 30rem) {
+  .facts {
+    grid-template-columns: max-content 1fr;
+  }
+}
+
+.facts dt {
+  font-size: 0.78rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: #6b7280;
+  font-weight: 600;
+  padding-top: 0.35rem;
+}
+
+.facts dd {
+  margin: 0;
+  padding-top: 0.2rem;
+  overflow-wrap: anywhere;
+}
+
+.facts a {
+  color: #4338ca;
+}
+
+.block {
+  margin-top: 1.75rem;
+}
+
+.block h2 {
+  margin: 0 0 0.5rem;
+  font-size: 1.05rem;
+}
+
+/* The payload wraps rather than scrolls: it is at most 220 bytes on the live store, and a block
+   that scrolls sideways hides the end of a line that had room to be shown. */
+.payload {
+  margin: 0;
+  padding: 0.6rem 0.75rem;
+  border: 1px solid #e5e7eb;
+  border-radius: 0.375rem;
+  background: #f9fafb;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.empty {
+  margin: 0.15rem 0;
+  color: #6b7280;
+  font-style: italic;
+}
+
+/* Where the chain begins when it does not begin at a root — a deleted cause, a loop, or the hop
+   cap. It sits above the tree because that is where the missing part would have been, and it is a
+   statement rather than a warning: a dangling cause is data, and drawing it in red would say the
+   page had failed at the one thing it is here to show honestly. */
+.start {
+  margin: 0 0 0.75rem;
+  padding: 0.45rem 0.65rem;
+  border-radius: 0.375rem;
+  background: #eef2ff;
+  color: #3730a3;
+  font-size: 0.88rem;
+}
+
+/* The row the reader arrived at. A tint and a word — never a colour alone, which says nothing to
+   anyone reading the page rather than looking at it. */
+.current > * {
+  background: #eef2ff;
+}
+
+.current th,
+.current td {
+  font-weight: 600;
+}
+
+.here {
+  margin-left: 0.5rem;
+  font-size: 0.78rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: #4338ca;
+  font-weight: 600;
+}
+
+/* A row that reports what was not walked rather than what was found. Italic and full width so it
+   can never be mistaken for one of the events around it — the same treatment `ui/page.css` gives
+   the note under a table. */
+.statement {
+  white-space: normal;
+  color: #6b7280;
+  font-size: 0.88rem;
+  font-style: italic;
+}
+
+/* The gist is the one cell allowed to be long and the one cell that must stay readable. */
+.gist {
+  white-space: normal;
+  overflow-wrap: anywhere;
+}

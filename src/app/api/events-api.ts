@@ -2,7 +2,14 @@ import { HttpClient, HttpParams } from '@angular/common/http';
 import { Injectable, inject } from '@angular/core';
 import { firstValueFrom } from 'rxjs';
 import { QITS_API_BASE } from './api-base';
-import type { EventDto, EventPage, EventQuery, EventsResponse, NamesResponse } from './dto';
+import type {
+  EventDto,
+  EventPage,
+  EventQuery,
+  EventResponse,
+  EventsResponse,
+  NamesResponse,
+} from './dto';
 
 /**
  * Everything this app reads, and it reads from exactly one upstream: qits-events, through the
@@ -52,11 +59,17 @@ export class EventsApi {
    * `parentId` of a row whose cause was deleted — so callers get the rejection and decide what it
    * means. The chain walker reads it as "chain starts here"; a deep link reads it as "no such
    * event".
+   *
+   * **The body is `{"event": …}` and is unwrapped here**, like the list's `events` and the
+   * vocabulary's `names`. Every route on this service envelopes its answer; reading this one as a
+   * bare event costs no error and every field, because a cast cannot see the difference and an
+   * absent field is `undefined` rather than a failure.
    */
-  get(id: string): Promise<EventDto> {
-    return firstValueFrom(
-      this.http.get<EventDto>(`${this.base}/events/api/events/${encodeURIComponent(id)}`),
+  async get(id: string): Promise<EventDto> {
+    const response = await firstValueFrom(
+      this.http.get<EventResponse>(`${this.base}/events/api/events/${encodeURIComponent(id)}`),
     );
+    return response.event;
   }
 
   /**

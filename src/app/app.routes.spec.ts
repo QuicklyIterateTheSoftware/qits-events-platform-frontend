@@ -1,6 +1,6 @@
 import { provideLocationMocks } from '@angular/common/testing';
 import { provideHttpClient } from '@angular/common/http';
-import { provideHttpClientTesting } from '@angular/common/http/testing';
+import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
 import { TestBed } from '@angular/core/testing';
 import { provideRouter } from '@angular/router';
 import { RouterTestingHarness } from '@angular/router/testing';
@@ -11,8 +11,8 @@ import { routes } from './app.routes';
  * `/events/events/:id`, and the `**` catch-all sitting *inside* the chrome rather than replacing
  * it.
  *
- * The pages themselves are placeholders today, so these cases are about addresses and not content.
- * They keep working as the pages land, which is the point of writing them now.
+ * These cases are about addresses and not content: each page's own spec asserts what it draws, and
+ * this file asserts only that the URL reaches it and carries what it has to carry.
  */
 describe('routes', () => {
   beforeEach(() => {
@@ -39,7 +39,12 @@ describe('routes', () => {
     );
     const page = (harness.routeNativeElement as HTMLElement).querySelector('app-event-page');
     expect(page).not.toBeNull();
-    expect(page?.textContent).toContain('c5edabb5-0621-4ff8-bf1b-29a3df2bb03c');
+
+    // The id reaches the page as a request. The breadcrumb abbreviates it the way every log line on
+    // this platform does, so the address is asserted where it is whole rather than where it is short.
+    TestBed.inject(HttpTestingController).expectOne(
+      '/events/api/events/c5edabb5-0621-4ff8-bf1b-29a3df2bb03c',
+    );
   });
 
   it('draws an unknown URL as a 404 inside the chrome, because this segment is ours', async () => {

@@ -3,8 +3,8 @@
 The event log's frontend: the read-only view of what has happened on this platform and what caused
 what. Served by qits-events itself at `/events/` through Quinoa. No forms, no writes at all.
 
-**The log is built and it tails live; the event page is not yet.** `/events/` is the real screen.
-`/events/events/<id>` answers with an honest placeholder that carries the id.
+**Both screens are built.** The log tails live, and the event page draws one event whole with the
+causation it belongs to.
 
 ## The screens
 
@@ -24,7 +24,15 @@ what. Served by qits-events itself at `/events/` through Quinoa. No forms, no wr
 - **`/events/events/<id>`** — one event, its payload, and the whole causation component it belongs
   to: walked up to the root by `parentId` and drawn down from there, with the arrived-at event
   marked. Budget: **`1 + U + D`** — 2 requests for a root with no children, 8 for the largest graph
-  this platform has produced.
+  this platform has produced. The number is printed above the tree, so it can be checked against a
+  network panel rather than taken on trust.
+
+  The payload is drawn whole: parsed, pretty-printed at two spaces and re-sorted by key, which is
+  the canonical reading of the bytes the publisher sent. It is never assumed to be JSON — a payload
+  that does not parse is shown as it arrived and said to be what it is, and an absent one draws an
+  empty state. Nothing is truncated; the largest payload on the live store is 220 bytes.
+
+  Every row of the tree links to its own event page, and the log's cause column lands here.
 
 The event page **repeats the noun**, and that is a decision. `/events/<id>` reads better and
 swallows every future top-level route, making the 404 unreachable and the choice irreversible once a
@@ -39,11 +47,22 @@ landing in parallel with this repository; the client sends them, treats a missin
 "no more", and therefore renders correctly against the server running today, which ignores what it
 does not know and answers the whole log.
 
+**Every route envelopes its answer**, `GET .../events/{id}` included: the body is `{"event": …}` and
+not the event. It is the one envelope that could plausibly have been absent, and reading past it
+costs no error at all — a cast cannot see the difference, so the caller gets an object whose every
+field is `undefined`. `src/app/api/events-api.ts` unwraps all three, and the spec flushes the real
+shape so a client that stops unwrapping fails there rather than in a browser.
+
 **There is no chain route, and there will not be one.** No `/chain`, no depth parameter, no graph
 endpoint — the service says so in three places. A chain-walking client bounds its own depth and
-remembers the ids it has visited, and this one will: 32 hops up, depth 8 and 200 nodes down, an
-id-seen set on both walks, and a drawn "bounded here" node rather than a silent truncation. Nothing
-server-side prevents a cycle either.
+remembers the ids it has visited, and `src/app/event/chain.ts` is that client: 32 hops up, depth 8
+and 200 nodes down, an id-seen set on both walks, and a row saying where the walk stopped rather
+than a silent truncation. Nothing server-side prevents a cycle either, so a loop is caught by id and
+drawn where it closes.
+
+A depth bound is a fact about one branch and is drawn beside it; the node cap is a fact about the
+walk and is said once under the table. Reporting the second per node would bury a two-hundred-event
+tree under a report about itself.
 
 Two answers that look like errors and are not:
 
