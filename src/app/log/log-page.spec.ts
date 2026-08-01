@@ -8,7 +8,8 @@ import { provideLocationMocks } from '@angular/common/testing';
 import { TestBed } from '@angular/core/testing';
 import { Router, provideRouter } from '@angular/router';
 import { RouterTestingHarness } from '@angular/router/testing';
-import type { EventDto } from '../api/dto';
+import type { EventCreatedFrame, EventDto } from '../api/dto';
+import { WEB_SOCKET_FACTORY, WEB_SOCKET_OPEN, type WebSocketLike } from '../api/web-socket';
 import { routes } from '../app.routes';
 
 /**
@@ -23,10 +24,16 @@ import { routes } from '../app.routes';
  * already fetched, a window that does not start at the top of the log says so, a page boundary that
  * falls on a tie repeats nothing, and a server that cannot page yet is reported rather than
  * silently truncated.
+ *
+ * The live tail is driven by hand at the bottom of the file — turned on, connected, pushed, dropped
+ * and reopened — because a socket never goes through `HttpClient` and `HttpTestingController` cannot
+ * see one. What those cases are really asserting is that an arrival costs **no request**, and that a
+ * frame the request would not have returned never reaches the screen.
  */
 describe('LogPage', () => {
   let http: HttpTestingController;
   let harness: RouterTestingHarness;
+  let sockets: FakeSocket[];
 
   const CURSOR = '2026-08-01T08:52:23.928965Z,0bdbe98d-0000-0000-0000-000000000000';
 
@@ -61,16 +68,39 @@ describe('LogPage', () => {
       ...over,
     });
 
+  const frame = (over: Partial<EventCreatedFrame> = {}): EventCreatedFrame => ({
+    id: '99c733d8-0000-0000-0000-000000000000',
+    name: 'BuildSuccessful',
+    occurredAt: '2026-08-01T09:30:00Z',
+    payload: JSON.stringify({ branch: 'main', repoId: 'qits-spa-ci', runId: '7c1a' }),
+    description: null,
+    parentId: null,
+    ...over,
+  });
+
   beforeEach(() => {
+    sockets = [];
     TestBed.configureTestingModule({
       providers: [
         provideRouter(routes),
         provideLocationMocks(),
         provideHttpClient(),
         provideHttpClientTesting(),
+        {
+          provide: WEB_SOCKET_FACTORY,
+          useValue: (url: string) => {
+            const socket = new FakeSocket(url);
+            sockets.push(socket);
+            return socket;
+          },
+        },
       ],
     });
     http = TestBed.inject(HttpTestingController);
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
   });
 
   async function open(url = '/'): Promise<void> {
@@ -115,6 +145,37 @@ describe('LogPage', () => {
 
   function bodyRows(): number {
     return page().querySelectorAll('tbody tr').length;
+  }
+
+  /** Each row's time cell, in the order they are drawn — the one place the order is visible. */
+  function rowTimes(): readonly string[] {
+    return Array.from(page().querySelectorAll('tbody tr th')).map((cell) =>
+      (cell.textContent ?? '').trim(),
+    );
+  }
+
+  /** The reader flipping the live tail's switch. */
+  function toggleTail(): void {
+    (page().querySelector('app-live-tail input[type="checkbox"]') as HTMLInputElement).click();
+  }
+
+  /** What the quiet marker beside the switch is saying. */
+  function tailMark(): string {
+    return (page().querySelector('app-live-tail .mark')?.textContent ?? '').trim();
+  }
+
+  /** The log on screen, the tail switched on and connected, and the connect's refetch answered. */
+  async function tailing(events: readonly EventDto[] = [build()], url = '/'): Promise<void> {
+    await open(url);
+    flushList(events);
+    flushNames();
+    await settle();
+    toggleTail();
+    await settle();
+    sockets[0].open();
+    await settle();
+    flushList(events, null);
+    await settle();
   }
 
   it('reads one page and one vocabulary, and nothing at all per row', async () => {
@@ -319,4 +380,247 @@ describe('LogPage', () => {
     expect(bodyRows()).toBe(200);
     expect(text()).toContain('paged none of them');
   });
+
+  it('opens no socket until the reader asks for one, and says the log is a snapshot', async () => {
+    await open();
+    flushList([build()]);
+    flushNames();
+    await settle();
+
+    // The front door is two requests and no connection at all. The third request the tail costs is
+    // behind the switch, where the reader can see what it bought.
+    expect(sockets).toHaveLength(0);
+    expect(tailMark()).toContain('snapshot');
+    http.verify();
+  });
+
+  it('connects, subscribes to every name, and refetches the window on the first connect', async () => {
+    await open();
+    flushList([build()]);
+    flushNames();
+    await settle();
+
+    toggleTail();
+    await settle();
+    expect(sockets).toHaveLength(1);
+    expect(tailMark()).toContain('Connecting');
+
+    sockets[0].open();
+    await settle();
+    expect(sockets[0].subscribed).toEqual(['*']);
+
+    // The stream is live-only: connecting says nothing about what was missed, so the window is read
+    // again. It is the window's own start, not the head of a log this page may not be showing.
+    const request = listRequest();
+    expect(request.request.params.has('cursor')).toBe(false);
+    request.flush({ events: [build()], nextCursor: null });
+    await settle();
+
+    expect(tailMark()).toContain('Live');
+    http.verify();
+  });
+
+  it('subscribes to the name filter’s own set, so a filter means one thing live and historically', async () => {
+    await tailing([release()], '/?name=SCMRelease');
+    expect(sockets[0].subscribed).toEqual(['SCMRelease']);
+  });
+
+  it('changes the subscription with one frame rather than a reconnect', async () => {
+    await tailing();
+
+    const checkbox = Array.from(page().querySelectorAll('input[type="checkbox"]')).find(
+      (input) => (input.parentElement?.textContent ?? '').trim() === 'SCMRelease',
+    ) as HTMLInputElement;
+    checkbox.click();
+    await settle();
+    flushList([release()], null);
+    await settle();
+
+    expect(sockets).toHaveLength(1);
+    expect(sockets[0].subscribed).toEqual(['SCMRelease']);
+  });
+
+  it('draws a pushed frame and issues no request for it', async () => {
+    await tailing();
+
+    sockets[0].push(frame());
+    await settle();
+
+    expect(bodyRows()).toBe(2);
+    expect(text()).toContain('qits-spa-ci');
+    // The whole of ⚖3: the frame *is* the event, so a live row costs nothing at all.
+    http.verify();
+  });
+
+  it('places a frame by its own instant rather than at the top of the screen', async () => {
+    await tailing();
+
+    // `occurredAt` is the caller's time and may be in the past; a prepend would put this row above a
+    // newer one and then disagree with the next refetch.
+    sockets[0].push(frame({ occurredAt: '2026-08-01T08:00:00Z' }));
+    await settle();
+
+    expect(rowTimes()).toEqual(['1 Aug 08:52', '1 Aug 08:00']);
+  });
+
+  it('drops a frame whose id is already on screen', async () => {
+    await tailing();
+
+    // A refetch and a frame overlap by construction: frames keep arriving while the invalidating
+    // fetch is in flight.
+    sockets[0].push(frame({ id: 'a3528932-0000-0000-0000-000000000000' }));
+    await settle();
+
+    expect(bodyRows()).toBe(1);
+  });
+
+  it('holds a frame the name filter would not have returned', async () => {
+    await tailing([release()], '/?name=SCMRelease');
+
+    sockets[0].push(frame({ name: 'BuildSuccessful' }));
+    await settle();
+
+    expect(bodyRows()).toBe(1);
+  });
+
+  it('holds a frame below the time floor, which the socket has no way to filter', async () => {
+    await tailing([build()], '/?since=2026-08-01T08:00:00.000Z');
+
+    sockets[0].push(frame({ occurredAt: '2026-07-31T13:21:00Z' }));
+    await settle();
+    expect(bodyRows()).toBe(1);
+
+    sockets[0].push(frame({ occurredAt: '2026-08-01T09:30:00Z' }));
+    await settle();
+    expect(bodyRows()).toBe(2);
+  });
+
+  it('holds a frame the payload search would not have returned', async () => {
+    await tailing([build()], '/?q=qits-spa-home');
+
+    sockets[0].push(frame({ payload: '{"repoId":"qits-spa-ci"}' }));
+    await settle();
+    expect(bodyRows()).toBe(1);
+
+    sockets[0].push(frame({ payload: '{"repoId":"qits-spa-home"}' }));
+    await settle();
+    expect(bodyRows()).toBe(2);
+  });
+
+  it('says it is reconnecting, refetches when it comes back, and repeats no row', async () => {
+    await tailing();
+    sockets[0].push(frame());
+    await settle();
+    expect(bodyRows()).toBe(2);
+
+    // Only the stream's own backoff is faked, and only for as long as it takes to fire. Faking the
+    // whole clock would take the framework's scheduling with it.
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+    sockets[0].drop();
+    vi.advanceTimersByTime(1000);
+    vi.useRealTimers();
+    await settle();
+
+    expect(tailMark()).toContain('Reconnecting');
+    expect(sockets).toHaveLength(2);
+
+    sockets[1].open();
+    await settle();
+    expect(sockets[1].subscribed).toEqual(['*']);
+
+    // The refetch is what heals an at-most-once channel, and the row that arrived by frame is in it.
+    listRequest().flush({
+      events: [
+        build(),
+        { ...frame(), createdAt: '2026-08-01T09:30:01Z', updatedAt: '' } as EventDto,
+      ],
+      nextCursor: null,
+    });
+    await settle();
+
+    expect(bodyRows()).toBe(2);
+    expect(tailMark()).toContain('Live');
+  });
+
+  it('closes the socket and stops inserting when the tail is switched off', async () => {
+    await tailing();
+
+    toggleTail();
+    await settle();
+
+    expect(sockets[0].closed).toBe(true);
+    expect(tailMark()).toContain('snapshot');
+    sockets[0].push(frame());
+    await settle();
+    expect(bodyRows()).toBe(1);
+  });
+
+  it('holds its frames in a window a cursor bounds above, and says why', async () => {
+    await open(`/?cursor=${encodeURIComponent(CURSOR)}`);
+    flushList([release()], null);
+    flushNames();
+    await settle();
+
+    toggleTail();
+    await settle();
+    sockets[0].open();
+    await settle();
+    const refetch = listRequest();
+    expect(refetch.request.params.get('cursor')).toBe(CURSOR);
+    refetch.flush({ events: [release()], nextCursor: null });
+    await settle();
+
+    // The window's ceiling is the cursor, so an event created a moment ago is outside it. Inserting
+    // it would draw a row the window does not contain.
+    expect(tailMark()).toContain('Paused');
+    sockets[0].push(frame());
+    await settle();
+
+    expect(bodyRows()).toBe(1);
+    http.verify();
+  });
 });
+
+/**
+ * The socket, driven by hand: open it, push a frame, drop it.
+ *
+ * The same shape `event-stream.spec.ts` uses, because the seam is the same one — a socket is opened
+ * by the browser and there is no test transport that can see it.
+ */
+class FakeSocket implements WebSocketLike {
+  onopen: ((event: Event) => void) | null = null;
+  onmessage: ((event: MessageEvent<string>) => void) | null = null;
+  onerror: ((event: Event) => void) | null = null;
+  onclose: ((event: CloseEvent) => void) | null = null;
+  readyState = WEB_SOCKET_OPEN;
+  readonly sent: string[] = [];
+  closed = false;
+
+  constructor(readonly url: string) {}
+
+  send(data: string): void {
+    this.sent.push(data);
+  }
+
+  close(): void {
+    this.closed = true;
+  }
+
+  open(): void {
+    this.onopen?.(new Event('open'));
+  }
+
+  push(frame: unknown): void {
+    this.onmessage?.(new MessageEvent('message', { data: JSON.stringify(frame) }));
+  }
+
+  drop(): void {
+    this.onclose?.(new CloseEvent('close'));
+  }
+
+  /** What this connection subscribed to, last frame wins — the server replaces the set wholesale. */
+  get subscribed(): readonly string[] {
+    const last = this.sent.at(-1);
+    return last ? (JSON.parse(last) as { subscribe: string[] }).subscribe : [];
+  }
+}

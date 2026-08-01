@@ -3,14 +3,14 @@
 The event log's frontend: the read-only view of what has happened on this platform and what caused
 what. Served by qits-events itself at `/events/` through Quinoa. No forms, no writes at all.
 
-**The log is built; the event page is not yet.** `/events/` is the real screen. `/events/events/<id>`
-answers with an honest placeholder that carries the id, and the live tail is not wired into the log
-yet — the transport is here and the page has a marked seam for it.
+**The log is built and it tails live; the event page is not yet.** `/events/` is the real screen.
+`/events/events/<id>` answers with an honest placeholder that carries the id.
 
 ## The screens
 
 - **`/events/`** — the log. Reverse-chronological, filterable by name, by time floor and by payload
-  search, with a live tail to come. Budget: **2 requests and one socket, and nothing per row.**
+  search, with a live tail behind a switch. Budget: **2 requests and nothing per row**, plus one
+  socket and one request per connect once the tail is on.
   Everything a row draws arrives with the row; "this had a cause" is free because `parentId` is on
   it, and "this caused N" is deliberately not drawn, because it would be one request per row.
 
@@ -79,6 +79,25 @@ each frame, which makes a filter change one `send` rather than a reconnect.
 
 The frame lacks `createdAt`/`updatedAt`, which are two fields the log does not draw. **If the log
 ever draws one, the push path becomes lossy and this decision must be revisited in the same commit.**
+The list the page holds is typed as the frame rather than as the fetched row, so that day is a build
+failure rather than a silence.
+
+**The tail is off until the reader switches it on.** Its refetch-on-every-connect would otherwise
+make the front door three requests where the design says two — and one of the three would be healing
+a gap a few milliseconds wide. Behind the switch, the same request buys the reader everything the
+page missed while it sat open, and the marker beside the switch says which of five things is true:
+off, connecting, live, reconnecting, or paused.
+
+**Paused** is the one corner worth naming. An address carrying `?cursor=` shows a window with the
+cursor as its ceiling, and an event created a moment ago is above that ceiling — so the tail holds
+its frames rather than drawing a row the window does not contain, and says so. "Back to the newest"
+is the way out.
+
+A frame goes through the same filters as the request. `?name=` is the socket's own subscribe set;
+`?since=` and `?q=` have no spelling on the socket, so `src/app/log/frame-filter.ts` asks the frame
+what the server's `where` clause would have asked — exactly, because the frame carries the payload
+and the instant. **Nothing already fetched is ever filtered**, which is the client-side filter this
+design rejects and this is not it.
 
 ## Layout
 

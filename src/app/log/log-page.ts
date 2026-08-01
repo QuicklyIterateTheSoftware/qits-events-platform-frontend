@@ -1,6 +1,7 @@
 import {
   ChangeDetectionStrategy,
   Component,
+  DestroyRef,
   computed,
   effect,
   inject,
@@ -10,23 +11,37 @@ import {
 import { toSignal } from '@angular/core/rxjs-interop';
 import { ActivatedRoute, Router, RouterLink, convertToParamMap } from '@angular/router';
 import { QitsBadge, QitsButton } from '@qits/ui-components';
-import type { EventDto, EventQuery } from '../api/dto';
+import type { EventCreatedFrame, EventQuery } from '../api/dto';
 import { EventsApi } from '../api/events-api';
-import { mergeNewestFirst, sortNewestFirst } from '../api/event-order';
+import { EventStream } from '../api/event-stream';
+import { insertNewestFirst, mergeNewestFirst, sortNewestFirst } from '../api/event-order';
 import { Async } from '../ui/async';
 import { Empty } from '../ui/empty';
 import { NONE, formatDayTime, plural, shortId } from '../ui/format';
 import { IDLE, LOADING, failed, ready, type Loadable } from '../ui/loadable';
 import { TimeRange } from '../ui/time-range';
 import { rowGist, type RowGist } from './event-summary';
+import { matchesFilters } from './frame-filter';
+import { LiveTail } from './live-tail';
 import { NameFilter } from './name-filter';
 
 /** How many rows one page asks for. The server's own default, sent explicitly so it is visible. */
 export const PAGE_SIZE = 200;
 
+/**
+ * What this table draws: a fetched row, or a frame the stream pushed.
+ *
+ * It is `EventCreatedFrame` and not `EventDto` on purpose. A frame is an event minus `createdAt` and
+ * `updatedAt`, the two fields this log never draws, so the narrower type is the true one — and it is
+ * the compiler holding the line under ⚖3: the day someone adds a `createdAt` column to this table it
+ * will not build, which is exactly when the decision to push rows rather than refetch has to be
+ * revisited.
+ */
+type LoggedEvent = EventCreatedFrame;
+
 /** One row, with the two cells its payload fills already worked out. */
 interface LogRow {
-  readonly event: EventDto;
+  readonly event: LoggedEvent;
   readonly gist: RowGist;
 }
 
@@ -39,7 +54,7 @@ function namesOf(value: string | null): readonly string[] {
 }
 
 /** The rows a `Loadable` holds, or none — so the template stays flat. */
-function rowsOf(state: Loadable<readonly EventDto[]>): readonly EventDto[] {
+function rowsOf(state: Loadable<readonly LoggedEvent[]>): readonly LoggedEvent[] {
   return state.kind === 'ready' ? state.value : [];
 }
 
@@ -50,8 +65,9 @@ function rowsOf(state: Loadable<readonly EventDto[]>): readonly EventDto[] {
  *
  * - `GET /events/api/events?limit=200` — one page of the log.
  * - `GET /events/api/events/names` — the filter's vocabulary, read once for the page's life.
- * - one `/events/stream` connection, which costs no request and is not wired here — see the seam
- *   below.
+ * - one `/events/stream` connection, opened once for the page's life and closed on destroy. It
+ *   costs no request; **each of its connects costs one**, which is the tail's rule below and is
+ *   what keeps the two additions to the budget separable.
  *
  * Nothing fans out per row. Everything a row draws arrived with the row: the time, the name, the
  * repository and gist its payload yields, and `parentId`. **The cause marker is a link and never a
@@ -80,19 +96,31 @@ function rowsOf(state: Loadable<readonly EventDto[]>): readonly EventDto[] {
  * page says so, with a way back to the newest. Changing any filter drops the cursor: a position in
  * one filtered log means nothing in another.
  *
- * **The seam for the live tail.** This page opens no socket. The tail mounts here by injecting
- * `EventStream`, calling `open(selectedNames())` and closing it on destroy, refetching through
- * {@link reload} whenever `connects` moves — the stream has no replay, so every connect and
- * reconnect invalidates — and inserting each frame through `insertNewestFirst` from
- * `api/event-order`, which dedupes by id and places a frame by `occurredAt` rather than prepending
- * it. The header has a slot marked for the connected/stale marker. Nothing in this file needs to
- * change for that, and if this table ever grows a `createdAt` column the decision to push rows
- * rather than refetch must be revisited in the same commit — a frame does not carry one.
+ * **The live tail pushes rows, and refetches on every connect.** The frame *is* the event (⚖3), so
+ * an arrival costs no request at all: it goes through `insertNewestFirst`, which places it by
+ * `occurredAt` rather than prepending it — the caller's time may be in the past, and one probe on
+ * the live store disagrees with its own `createdAt` by eight minutes — and drops an id already on
+ * screen, because a refetch and a frame overlap by construction. **Nothing here polls.** The only
+ * timer in the feature is the stream's own reconnect backoff.
+ *
+ * Every connect and reconnect calls {@link reload}: the stream is live-only, there is no replay and
+ * no resume token, and the gap a disconnected window left is unknowable. That refetch is what heals
+ * an at-most-once channel, and it is not a resume protocol.
+ *
+ * **The tail is off until the reader asks for it**, which is what keeps the front door at the two
+ * requests above. Turning it on connects, subscribes and refetches — one request, on a press, and it
+ * closes whatever the page missed while it sat there. See the note on {@link tailOn}.
+ *
+ * **A frame goes through the same filters as the request.** `?name=` is the socket's own subscribe
+ * set, so the server does that one twice; `?since=` and `?q=` have no spelling on the socket and are
+ * re-asked of the frame by `matchesFilters`, exactly, because the frame carries the payload and the
+ * instant the server would have compared. Nothing fetched is ever filtered here — that is the
+ * client-side filter ⚖2 rejects, and this is not it.
  */
 @Component({
   selector: 'app-log-page',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [Async, Empty, NameFilter, QitsBadge, QitsButton, RouterLink, TimeRange],
+  imports: [Async, Empty, LiveTail, NameFilter, QitsBadge, QitsButton, RouterLink, TimeRange],
   templateUrl: './log-page.html',
   styleUrls: ['../ui/page.css', './log-page.css'],
 })
@@ -100,6 +128,8 @@ export class LogPage {
   private readonly api = inject(EventsApi);
   private readonly router = inject(Router);
   private readonly route = inject(ActivatedRoute);
+  private readonly stream = inject(EventStream);
+  private readonly destroyRef = inject(DestroyRef);
 
   protected readonly NONE = NONE;
   protected readonly pageSize = PAGE_SIZE;
@@ -130,8 +160,30 @@ export class LogPage {
     JSON.stringify([this.selectedNames(), this.since(), this.search()]),
   );
 
-  /** The page of the log, and the pages appended to it. */
-  protected readonly log = signal<Loadable<readonly EventDto[]>>(LOADING);
+  /** The page of the log, the pages appended to it, and the frames pushed into it. */
+  protected readonly log = signal<Loadable<readonly LoggedEvent[]>>(LOADING);
+
+  /**
+   * Whether the reader wants the tail, and **it is off until they say so.**
+   *
+   * The plan asks for two things that collide on the first connect: a front door of two requests,
+   * and a refetch on *every* open including the first. A tail that were on by default would connect
+   * a moment after the page's own fetch and spend a third request healing a gap a few milliseconds
+   * wide — so the budget above would be a number this page never actually costs. Off by default
+   * keeps the budget honest, keeps the every-open rule literal with no exception carved into it, and
+   * puts the third request behind a press, where the reader can see what it bought. The plan's own
+   * browser pass says "turn the live tail on", which is the same reading.
+   *
+   * It is component state and not a query parameter: the four filters are the URL's, and a
+   * preference for how a page behaves is not a description of what it is showing.
+   */
+  protected readonly tailOn = signal(false);
+
+  /** Whether the socket is up. False is "briefly behind", never "wrong". */
+  protected readonly tailConnected = this.stream.connected;
+
+  /** Whether it has ever been up, which is what tells a first connect from a reconnect. */
+  protected readonly tailEverConnected = computed(() => this.stream.connects() > 0);
 
   /** The filter's vocabulary. Its failure is inline and takes nothing else down. */
   protected readonly vocabulary = signal<Loadable<readonly string[]>>(LOADING);
@@ -192,6 +244,65 @@ export class LogPage {
         void this.reload();
       });
     });
+
+    // The socket follows the switch and the name filter, and nothing else. A filter change while it
+    // is up is one subscribe frame rather than a reconnect — the server replaces the set wholesale —
+    // and the refetch that closes the same gap is the effect above's, which is what makes `?name=`
+    // mean one thing live and historically.
+    effect(() => {
+      if (!this.tailOn()) {
+        this.stream.close();
+        return;
+      }
+      this.stream.open(this.selectedNames());
+    });
+
+    // Every connect and every reconnect invalidates the window on screen. Zero is "nothing has
+    // connected yet", where the page's own first load stands and there is nothing to heal; every
+    // move after that is a gap of unknowable width, and `reload` is the only thing that closes it.
+    effect(() => {
+      if (this.stream.connects() === 0) {
+        return;
+      }
+      untracked(() => void this.reload());
+    });
+
+    const stopFrames = this.stream.onFrame((frame) => this.accept(frame));
+    this.destroyRef.onDestroy(() => {
+      stopFrames();
+      this.stream.close();
+    });
+  }
+
+  /**
+   * One pushed frame, into the list on screen.
+   *
+   * Four reasons to drop one, and each is a case where inserting would put a row on screen that the
+   * request behind it would not have returned:
+   *
+   * - the tail is off, so nothing was asked for;
+   * - there is no ready list to insert into — a frame is not a way to recover from a failed fetch;
+   * - the window has a cursor above it, so an event created a moment ago is outside it entirely;
+   * - the frame does not match the filters in force.
+   *
+   * Everything else is `insertNewestFirst`, which places it by `(occurredAt, id)` and drops an id
+   * already drawn. No request is issued here, on any path.
+   */
+  private accept(frame: EventCreatedFrame): void {
+    const state = this.log();
+    if (!this.tailOn() || this.windowStart() !== null || state.kind !== 'ready') {
+      return;
+    }
+    const filters = { names: this.selectedNames(), since: this.since(), q: this.search() };
+    if (!matchesFilters(frame, filters)) {
+      return;
+    }
+    this.log.set(ready(insertNewestFirst(state.value, frame)));
+  }
+
+  /** The switch. Turning it on connects, subscribes and refetches; turning it off closes the socket. */
+  protected setTail(on: boolean): void {
+    this.tailOn.set(on);
   }
 
   /**

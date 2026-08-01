@@ -4,6 +4,16 @@
    The filters wrap rather than scroll. Each is a fieldset with its own legend, so the three read as
    three questions — which names, since when, containing what — on a phone as well as on a desk. */
 
+/* The header's right-hand side: the tail's switch and marker above the one button. The marker is a
+   whole sentence, so the two stack rather than sitting side by side once the header wraps. */
+.actions {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 0.4rem;
+  max-width: 22rem;
+}
+
 .filters {
   display: flex;
   flex-wrap: wrap;

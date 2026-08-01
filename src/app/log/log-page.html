@@ -6,8 +6,16 @@
       writes, republishes or deletes an event.
     </p>
   </div>
-  <!-- The live tail's toggle and its connected/stale marker mount here. -->
-  <qits-button variant="secondary" size="sm" (pressed)="reload()">Refresh</qits-button>
+  <div class="actions">
+    <app-live-tail
+      [on]="tailOn()"
+      [connected]="tailConnected()"
+      [everConnected]="tailEverConnected()"
+      [windowed]="!!windowStart()"
+      (toggled)="setTail($event)"
+    />
+    <qits-button variant="secondary" size="sm" (pressed)="reload()">Refresh</qits-button>
+  </div>
 </header>
 
 <section class="filters" aria-label="Filters">
