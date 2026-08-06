@@ -1,6 +1,6 @@
 {
   "name": "qits-spa-events",
-  "version": "2026.802.164012",
+  "version": "2026.806.184835",
   "private": true,
   "description": "The events service's frontend: an Angular application that consumes @qits/ui-components from qits' own npm registry. It ships no image — qits-events serves it via Quinoa at /events/.",
   "license": "MIT",
@@ -23,7 +23,7 @@
     "@angular/forms": "^21.2.0",
     "@angular/platform-browser": "^21.2.0",
     "@angular/router": "^21.2.0",
-    "@qits/ui-components": "^2026.802.154237",
+    "@qits/ui-components": "^2026.806.184725",
     "rxjs": "~7.8.0",
     "tslib": "^2.3.0"
   },
