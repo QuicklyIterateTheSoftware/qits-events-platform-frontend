@@ -4,6 +4,7 @@ import { HttpTestingController, provideHttpClientTesting } from '@angular/common
 import { TestBed } from '@angular/core/testing';
 import { provideRouter } from '@angular/router';
 import { RouterTestingHarness } from '@angular/router/testing';
+import { provideQitsNavigationLinks, type QitsNavLink } from '@qits/ui-components';
 import { routes } from './app.routes';
 
 /**
@@ -14,6 +15,18 @@ import { routes } from './app.routes';
  * These cases are about addresses and not content: each page's own spec asserts what it draws, and
  * this file asserts only that the URL reaches it and carries what it has to carry.
  */
+
+/**
+ * The navigation the chrome is handed, standing in for the gateway's `/main-navigation`. The
+ * literal source rather than a fourth request through the testing backend: it fetches nothing, so
+ * there is no navigation request left pending to keep the harness from settling, and a spec about
+ * addresses does not have to know the navigation exists.
+ */
+const NAV: readonly QitsNavLink[] = [
+  { label: 'Home', href: '/' },
+  { label: 'Events', href: '/events/' },
+];
+
 describe('routes', () => {
   beforeEach(() => {
     TestBed.configureTestingModule({
@@ -22,6 +35,7 @@ describe('routes', () => {
         provideLocationMocks(),
         provideHttpClient(),
         provideHttpClientTesting(),
+        provideQitsNavigationLinks(NAV),
       ],
     });
   });
@@ -51,6 +65,8 @@ describe('routes', () => {
     const harness = await RouterTestingHarness.create('/no/such/page');
     const layout = harness.routeNativeElement as HTMLElement;
     expect(layout.querySelector('app-not-found')).not.toBeNull();
-    expect(layout.querySelectorAll('.qits-layout-link').length).toBeGreaterThan(0);
+    // The chrome is still around it — rendering the links it was given, which here are this
+    // fixture's rather than the platform's.
+    expect(layout.querySelectorAll('.qits-layout-link')).toHaveLength(NAV.length);
   });
 });
