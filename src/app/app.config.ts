@@ -1,12 +1,12 @@
 import { provideBrowserGlobalErrorListeners, type ApplicationConfig } from '@angular/core';
 import { provideHttpClient, withFetch } from '@angular/common/http';
 import { provideRouter } from '@angular/router';
-import { provideQitsNavigation, provideQitsProjects } from '@qits/ui-components';
+import { provideQitsNavigation, provideQitsProjects, provideQitsScope } from '@qits/ui-components';
 
 import { routes } from './app.routes';
 
 /**
- * Five providers, in the order spa-home documents and every sibling repeats.
+ * Six providers, in the order every sibling repeats.
  *
  * - `provideBrowserGlobalErrorListeners` funnels genuinely-global errors and unhandled rejections
  *   into Angular's `ErrorHandler`.
@@ -14,20 +14,20 @@ import { routes } from './app.routes';
  *   query parameters, so the URL is what makes both bookmarkable.
  * - `withFetch` is not a preference. The default XHR backend is invisible to OTLP fetch
  *   instrumentation, so choosing it would quietly forfeit client spans the moment this deployment
- *   grows a telemetry relay. Every call this app makes is a same-origin path behind the gateway and
+ *   grows a telemetry relay. Every call this app makes is a same-origin path behind the edge and
  *   carries no credential at all — this service authenticates nothing by design, and the socket
  *   upgrade was measured answering `101` with none.
  * - `provideQitsNavigation` is what puts links in the shared layout's sidebar. It issues one `GET
  *   /main-navigation` at startup and hands the answer to `QitsMainLayout`: the platform's door list
- *   is the gateway's answer now, derived from the routes it actually serves, rather than a list
+ *   is the edge's answer now, derived from the deployments it actually serves, rather than a list
  *   compiled into `@qits/ui-components` that lagged every new application. It needs the
  *   `provideHttpClient` above, and without it the sidebar renders empty.
- * - `provideQitsProjects` puts the project picker in the chrome's top-left slot, where the wordmark
- *   was, from one `GET /projects/api/projects`. Every resource on this platform belongs to a
- *   project, so which one is open is the outermost fact about a page rather than a filter inside
- *   one of them — above the links, because it scopes them. It also installs the library's default
- *   scope, which carries a pick in `?project=` on the current URL; the pages here do not read that
- *   parameter yet, and the picker is the chrome's regardless of which of them have been scoped.
+ * - `provideQitsProjects` fills the chrome's project picker from one `GET /projects/api/projects`,
+ *   and installs the repositories of whatever project is in scope alongside it.
+ * - `provideQitsScope('project')` says how deep this application's own addresses go. Every page
+ *   here is about the platform's event log, which one project narrows but does not divide, so the
+ *   deepest address this app serves is `/<projectSlug>/…` — never the repository form. The scope is
+ *   read from the address and nothing else, so picking a project navigates rather than remembers.
  */
 export const appConfig: ApplicationConfig = {
   providers: [
@@ -36,5 +36,6 @@ export const appConfig: ApplicationConfig = {
     provideHttpClient(withFetch()),
     provideQitsNavigation(),
     provideQitsProjects(),
+    provideQitsScope('project'),
   ],
 };

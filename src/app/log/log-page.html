@@ -1,6 +1,9 @@
 <header class="head">
   <div>
     <h1>Events</h1>
+    @if (scoped.name(); as project) {
+      <p class="project-scope">{{ project }}</p>
+    }
     <p class="lede">
       What has been happening on the platform, newest first. {{ lede() }} Read-only: nothing here
       writes, republishes or deletes an event.
@@ -77,7 +80,7 @@
         @for (row of rows(); track row.event.id) {
           <tr>
             <th scope="row">
-              <a [routerLink]="['/events', row.event.id]">{{
+              <a [routerLink]="[...scoped.commands(), 'events', row.event.id]">{{
                 formatDayTime(row.event.occurredAt)
               }}</a>
             </th>
@@ -86,7 +89,9 @@
             <td class="gist">{{ row.gist.summary }}</td>
             <td>
               @if (row.event.parentId; as parentId) {
-                <a class="mono" [routerLink]="['/events', parentId]">{{ shortId(parentId) }}</a>
+                <a class="mono" [routerLink]="[...scoped.commands(), 'events', parentId]">{{
+                  shortId(parentId)
+                }}</a>
               } @else {
                 <span class="subtle">{{ NONE }}</span>
               }

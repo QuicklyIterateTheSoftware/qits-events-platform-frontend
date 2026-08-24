@@ -1,14 +1,15 @@
 # qits-spa-events
 
 The event log's frontend: the read-only view of what has happened on this platform and what caused
-what. Served by qits-events itself at `/events/` through Quinoa. No forms, no writes at all.
+what. Served by qits-events itself at the root of `events.<env>.<domain>` through Quinoa. No forms,
+no writes at all.
 
 **Both screens are built.** The log tails live, and the event page draws one event whole with the
 causation it belongs to.
 
 ## The screens
 
-- **`/events/`** — the log. Reverse-chronological, filterable by name, by time floor and by payload
+- **`/`** (and `/<projectSlug>/`) — the log. Reverse-chronological, filterable by name, by time floor and by payload
   search, with a live tail behind a switch. Budget: **2 requests and nothing per row**, plus one
   socket and one request per connect once the tail is on.
   Everything a row draws arrives with the row; "this had a cause" is free because `parentId` is on
@@ -21,7 +22,7 @@ causation it belongs to.
   "load more" over the address rather than pushed onto it; reopening such an address resumes at that
   cursor in **one** request, so the window then starts partway down the log and the page says so.
 
-- **`/events/events/<id>`** — one event, its payload, and the whole causation component it belongs
+- **`/events/<id>`** (and `/<projectSlug>/events/<id>`) — one event, its payload, and the whole causation component it belongs
   to: walked up to the root by `parentId` and drawn down from there, with the arrived-at event
   marked. Budget: **`1 + U + D`** — 2 requests for a root with no children, 8 for the largest graph
   this platform has produced. The number is printed above the tree, so it can be checked against a
@@ -34,9 +35,22 @@ causation it belongs to.
 
   Every row of the tree links to its own event page, and the log's cause column lands here.
 
-The event page **repeats the noun**, and that is a decision. `/events/<id>` reads better and
-swallows every future top-level route, making the 404 unreachable and the choice irreversible once a
-link is shared. Every sibling repeats its noun, and the segment matches the API path it mirrors.
+The event page **names its noun**, and that is a decision. A bare `/<id>` reads shorter but swallows
+every future top-level route, making the 404 unreachable and the choice irreversible once a link is
+shared. Every sibling names its noun, and the segment matches the API path it mirrors.
+
+## The project in the address
+
+This app is **project scoped**: every page is reachable twice, once at the root and once under a
+project slug — `/qits/` is the same log as `/`, and `/qits/events/<id>` the same event page as
+`/events/<id>`. The literal routes are matched first, so `/events/<id>` stays this app's own page and
+never reads as a project called `events`.
+
+The scope is read from the address by `@qits/ui-components` (`provideQitsScope('project')`), never
+from a route parameter, so one component serves both forms. It is drawn in the page header and
+changes nothing else: qits-events holds one log for the whole platform, and a project narrows it in
+no query this service offers. Picking a project in the chrome navigates — the URL is the only place
+the scope is kept.
 
 ## What the service gives this app, and what it refuses
 
@@ -153,8 +167,9 @@ ng serve
 ```
 
 Then open `http://localhost:4200/`. `proxy.conf.json` forwards `/events/api` and — with `ws: true` —
-`/events/stream` to a gateway on `localhost:8080`, because `ng serve` puts no gateway in front. In a
-deployment every call is a same-origin path behind the real one. These reads carry no credential in
+`/events/stream`, plus `/main-navigation` and `/projects/api`, to an edge on `localhost:8080`,
+because `ng serve` puts no edge in front. In a deployment every call is a same-origin path behind the
+real one. These reads carry no credential in
 either case: this service authenticates nothing by design, and the socket upgrade was measured
 answering `101` with none.
 
@@ -169,7 +184,7 @@ there should not be one. `HttpTestingController` for every request, `RouterTesti
 routes, and a hand-driven fake socket for the tail.
 
 There is no E2E framework on this platform. A browser pass is a scripted manual one, through the real
-gateway at `:8080`, and it begins with a hard reload — every SPA here serves `index.html` with
+edge at `:8080`, and it begins with a hard reload — every SPA here serves `index.html` with
 `immutable, max-age=86400`, so a returning browser gets the stale page after every deploy.
 
 ## Building
@@ -180,4 +195,4 @@ ng build
 
 The bundle lands in `dist/`. It is not deployed from here: qits-events carries this repository as a
 git submodule at `service/src/main/webui` — Quinoa's ui-dir — and builds it into the service image at
-`/events/`, so advancing that gitlink is what ships a change.
+its root, so advancing that gitlink is what ships a change.
