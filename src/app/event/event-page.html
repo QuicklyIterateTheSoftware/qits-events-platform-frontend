@@ -1,5 +1,5 @@
 <p class="crumbs">
-  <a routerLink="/">Events</a><span class="sep">/</span
+  <a [routerLink]="scoped.commands()">Events</a><span class="sep">/</span
   ><span class="mono">{{ shortId(eventId()) }}</span>
 </p>
 
@@ -14,6 +14,9 @@
   <header class="head">
     <div>
       <h1>{{ event.name }}</h1>
+      @if (scoped.name(); as project) {
+        <p class="project-scope">{{ project }}</p>
+      }
       <p class="lede">
         @if (gist(); as gist) {
           {{ gist.repository ?? 'No repository named' }} · {{ gist.summary }}
@@ -42,7 +45,7 @@
     <dt>Cause</dt>
     <dd>
       @if (event.parentId; as parentId) {
-        <a class="mono" [routerLink]="['/events', parentId]">{{ parentId }}</a>
+        <a class="mono" [routerLink]="[...scoped.commands(), 'events', parentId]">{{ parentId }}</a>
       } @else {
         <span class="subtle">Nothing in the log caused this event.</span>
       }
@@ -147,7 +150,7 @@
                     @if (line.current) {
                       <span>{{ formatDayTime(event.occurredAt) }}</span>
                     } @else {
-                      <a [routerLink]="['/events', event.id]">{{
+                      <a [routerLink]="[...scoped.commands(), 'events', event.id]">{{
                         formatDayTime(event.occurredAt)
                       }}</a>
                     }

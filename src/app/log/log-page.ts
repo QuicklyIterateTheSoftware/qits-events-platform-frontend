@@ -11,6 +11,7 @@ import {
 import { toSignal } from '@angular/core/rxjs-interop';
 import { ActivatedRoute, Router, RouterLink, convertToParamMap } from '@angular/router';
 import { QitsBadge, QitsButton } from '@qits/ui-components';
+import { injectScopedProject } from '../nav/scoped-project';
 import type { EventCreatedFrame, EventQuery } from '../api/dto';
 import { EventsApi } from '../api/events-api';
 import { EventStream } from '../api/event-stream';
@@ -126,6 +127,14 @@ function rowsOf(state: Loadable<readonly LoggedEvent[]>): readonly LoggedEvent[]
 })
 export class LogPage {
   private readonly api = inject(EventsApi);
+
+  /**
+   * The project the address names. The log itself is unfiltered — this service knows nothing about
+   * projects — so the scope is drawn in the header and nowhere else, and every in-app link below
+   * keeps whatever the reader arrived in.
+   */
+  protected readonly scoped = injectScopedProject();
+
   private readonly router = inject(Router);
   private readonly route = inject(ActivatedRoute);
   private readonly stream = inject(EventStream);

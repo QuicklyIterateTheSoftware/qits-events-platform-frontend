@@ -9,6 +9,7 @@ import {
 import { toSignal } from '@angular/core/rxjs-interop';
 import { ActivatedRoute, RouterLink, convertToParamMap } from '@angular/router';
 import { QitsBadge } from '@qits/ui-components';
+import { injectScopedProject } from '../nav/scoped-project';
 import type { EventDto } from '../api/dto';
 import { EventsApi } from '../api/events-api';
 import { rowGist } from '../log/event-summary';
@@ -94,6 +95,9 @@ type ShortStart = Exclude<ChainStart, { kind: 'root' }>;
   styleUrls: ['../ui/page.css', './event-page.css'],
 })
 export class EventPage {
+  /** The project the address names — what the crumb links back into, and what the header says. */
+  protected readonly scoped = injectScopedProject();
+
   private readonly route = inject(ActivatedRoute);
   private readonly api = inject(EventsApi);
   private readonly walker = inject(ChainWalker);
