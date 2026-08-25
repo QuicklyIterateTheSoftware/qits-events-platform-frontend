@@ -9,7 +9,7 @@ import { matchesFilters } from './frame-filter';
  * a reload then removes, and the reader would have no way to tell which reading was the true one.
  */
 describe('matchesFilters', () => {
-  const NONE = { names: [], since: null, q: null };
+  const NONE = { names: [], since: null, q: null, environment: null };
 
   const frame = (over: Partial<EventCreatedFrame> = {}): EventCreatedFrame => ({
     id: 'a3528932-0000-0000-0000-000000000000',
@@ -18,6 +18,7 @@ describe('matchesFilters', () => {
     payload: '{"branch":"main","repoId":"qits-spa-home"}',
     description: null,
     parentId: null,
+    environment: null,
     ...over,
   });
 
@@ -79,8 +80,26 @@ describe('matchesFilters', () => {
     expect(matchesFilters(frame(), { ...NONE, q: '   ' })).toBe(true);
   });
 
+  it('keeps a frame from the tier in force and drops one from another, or from none', () => {
+    const dev = { ...NONE, environment: 'dev' };
+    expect(matchesFilters(frame({ environment: 'dev' }), dev)).toBe(true);
+    expect(matchesFilters(frame({ environment: 'platform' }), dev)).toBe(false);
+    // A frame from before the field carries null, which matches no filter value — exactly as its
+    // row would not have been in the filtered fetch.
+    expect(matchesFilters(frame({ environment: null }), dev)).toBe(false);
+  });
+
+  it('reads a blank tier as every tier', () => {
+    expect(matchesFilters(frame({ environment: null }), { ...NONE, environment: '  ' })).toBe(true);
+  });
+
   it('needs every clause, not one of them', () => {
-    const both = { names: ['BuildSuccessful'], since: '2026-08-01T00:00:00Z', q: 'qits-spa-home' };
+    const both = {
+      names: ['BuildSuccessful'],
+      since: '2026-08-01T00:00:00Z',
+      q: 'qits-spa-home',
+      environment: null,
+    };
     expect(matchesFilters(frame(), both)).toBe(true);
     expect(matchesFilters(frame({ name: 'SCMRelease' }), both)).toBe(false);
     expect(matchesFilters(frame({ occurredAt: '2026-07-31T13:21:00Z' }), both)).toBe(false);

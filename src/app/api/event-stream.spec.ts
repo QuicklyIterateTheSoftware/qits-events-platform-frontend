@@ -94,6 +94,7 @@ describe('EventStream', () => {
     payload: '{"repoId":"qits-spa-home"}',
     description: null,
     parentId: null,
+    environment: null,
   });
 
   it('opens the stream at the service’s own path, on this origin', () => {

@@ -48,6 +48,25 @@
       under — and a version or a package name that happens to contain the same letters.
     </p>
   </fieldset>
+
+  <fieldset class="search">
+    <legend>Environment</legend>
+    <label class="field" for="log-environment">
+      <span class="sr">The environment tier the publisher ran in</span>
+      <input
+        id="log-environment"
+        type="search"
+        placeholder="dev"
+        [value]="environment() ?? ''"
+        (change)="setEnvironment($event)"
+      />
+    </label>
+    <p class="hint">
+      Exactly the tier the publisher stamped — <code>dev</code>, or <code>platform</code> for a
+      service that serves every tier. Events from before the platform knew tiers carry none and
+      match no value.
+    </p>
+  </fieldset>
 </section>
 
 @if (windowStart()) {
@@ -71,6 +90,7 @@
         <tr>
           <th scope="col">Time (UTC)</th>
           <th scope="col">Name</th>
+          <th scope="col">Environment</th>
           <th scope="col">Repository</th>
           <th scope="col">Summary</th>
           <th scope="col">Cause</th>
@@ -85,6 +105,13 @@
               }}</a>
             </th>
             <td><qits-badge [label]="row.event.name" [tone]="tone(row.event.name)" /></td>
+            <td>
+              @if (row.event.environment; as environment) {
+                {{ environment }}
+              } @else {
+                <span class="subtle">{{ NONE }}</span>
+              }
+            </td>
             <td>{{ row.gist.repository ?? NONE }}</td>
             <td class="gist">{{ row.gist.summary }}</td>
             <td>
@@ -99,7 +126,7 @@
           </tr>
         } @empty {
           <tr>
-            <td colspan="5">
+            <td colspan="6">
               @if (filtered()) {
                 <app-empty message="No event matches these filters." />
               } @else {
@@ -111,7 +138,7 @@
       </tbody>
       <tfoot>
         <tr>
-          <td colspan="5">
+          <td colspan="6">
             The cause column links to the event that caused this one. It never counts what an event
             caused: that would be one request per row, and a count taken from the rows on screen
             would be right in the middle of a page and wrong at both edges.

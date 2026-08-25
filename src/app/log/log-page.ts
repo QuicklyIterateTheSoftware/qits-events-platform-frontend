@@ -160,13 +160,16 @@ export class LogPage {
    * name. */
   protected readonly search = computed(() => this.queryParams().get('q'));
 
+  /** The tier in force — an exact match on what the publisher stamped, or null for every tier. */
+  protected readonly environment = computed(() => this.queryParams().get('environment'));
+
   /**
-   * The three filters as one value, so the effect below re-runs when a filter changes and not when
+   * The four filters as one value, so the effect below re-runs when a filter changes and not when
    * "load more" records its position. A cursor written into the URL must not refetch the page it
    * was written by.
    */
   private readonly filters = computed(() =>
-    JSON.stringify([this.selectedNames(), this.since(), this.search()]),
+    JSON.stringify([this.selectedNames(), this.since(), this.search(), this.environment()]),
   );
 
   /** The page of the log, the pages appended to it, and the frames pushed into it. */
@@ -233,7 +236,8 @@ export class LogPage {
 
   /** Whether any filter is in force, which is what tells "nothing matches" from "nothing exists". */
   protected readonly filtered = computed(
-    () => this.selectedNames().length > 0 || !!this.since() || !!this.search(),
+    () =>
+      this.selectedNames().length > 0 || !!this.since() || !!this.search() || !!this.environment(),
   );
 
   constructor() {
@@ -302,7 +306,12 @@ export class LogPage {
     if (!this.tailOn() || this.windowStart() !== null || state.kind !== 'ready') {
       return;
     }
-    const filters = { names: this.selectedNames(), since: this.since(), q: this.search() };
+    const filters = {
+      names: this.selectedNames(),
+      since: this.since(),
+      q: this.search(),
+      environment: this.environment(),
+    };
     if (!matchesFilters(frame, filters)) {
       return;
     }
@@ -386,6 +395,11 @@ export class LogPage {
     this.navigate({ q: value.length > 0 ? value : null });
   }
 
+  protected setEnvironment(event: Event): void {
+    const value = (event.target as HTMLInputElement).value.trim();
+    this.navigate({ environment: value.length > 0 ? value : null });
+  }
+
   /** Back to the head of the log, from a window an address started partway down. */
   protected toNewest(): void {
     this.navigate({});
@@ -410,6 +424,7 @@ export class LogPage {
       name: this.selectedNames(),
       since: this.since(),
       q: this.search(),
+      environment: this.environment(),
     };
   }
 

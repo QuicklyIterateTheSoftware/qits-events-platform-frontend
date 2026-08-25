@@ -26,6 +26,10 @@
  *
  * `description` is null on every row the platform writes; the field belongs to the hand-recorded
  * path.
+ *
+ * `environment` is the tier the publisher ran in — `dev`, or `platform` for a service that serves
+ * every tier — and null for an event recorded before the platform knew tiers. Like `parentId` it
+ * may name an environment that no longer exists, and nothing here may treat that as an error.
  */
 export interface EventDto {
   readonly id: string;
@@ -34,6 +38,7 @@ export interface EventDto {
   readonly payload: string | null;
   readonly description: string | null;
   readonly parentId: string | null;
+  readonly environment: string | null;
   readonly createdAt: string;
   readonly updatedAt: string;
 }
@@ -97,6 +102,7 @@ export interface EventCreatedFrame {
   readonly payload: string | null;
   readonly description: string | null;
   readonly parentId: string | null;
+  readonly environment: string | null;
 }
 
 /**
@@ -112,6 +118,9 @@ export interface EventCreatedFrame {
  *   not a repository filter, and the UI must label it as one: the repository lives under `repoId`
  *   on builds and `repository` on releases, so no single key means "which repository" and `q`
  *   over-matches slightly by design.
+ * - `environment` — exact match on the tier the publisher stamped (`dev`, `platform`). Unlike `q`
+ *   it is an indexed equality server-side; events from before the field carry null and match no
+ *   filter value.
  */
 export interface EventQuery {
   readonly limit?: number;
@@ -119,6 +128,7 @@ export interface EventQuery {
   readonly name?: readonly string[];
   readonly since?: string | null;
   readonly q?: string | null;
+  readonly environment?: string | null;
 }
 
 /** One page of the log, with the cursor that follows it. `nextCursor` null means this is the end. */

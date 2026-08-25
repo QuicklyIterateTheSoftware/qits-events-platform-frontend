@@ -48,6 +48,7 @@ describe('EventPage', () => {
     }),
     description: null,
     parentId: null,
+    environment: null,
     createdAt: '2026-08-01T08:52:29.1Z',
     updatedAt: '2026-08-01T08:52:29.2Z',
     ...over,

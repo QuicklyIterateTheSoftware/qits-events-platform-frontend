@@ -49,6 +49,7 @@ describe('LogPage', () => {
     }),
     description: null,
     parentId: null,
+    environment: null,
     createdAt: '2026-08-01T08:52:29.1Z',
     updatedAt: '2026-08-01T08:52:29.1Z',
     ...over,
@@ -75,6 +76,7 @@ describe('LogPage', () => {
     payload: JSON.stringify({ branch: 'main', repoId: 'qits-spa-ci', runId: '7c1a' }),
     description: null,
     parentId: null,
+    environment: null,
     ...over,
   });
 

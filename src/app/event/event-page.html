@@ -51,6 +51,15 @@
       }
     </dd>
 
+    <dt>Environment</dt>
+    <dd>
+      @if (event.environment; as environment) {
+        <span>{{ environment }}</span>
+      } @else {
+        <span class="subtle">Recorded before the platform stamped tiers.</span>
+      }
+    </dd>
+
     <dt>Description</dt>
     <dd>
       @if (event.description) {
