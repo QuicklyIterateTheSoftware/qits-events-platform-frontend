@@ -130,5 +130,8 @@ export function listParams(query: EventQuery): HttpParams {
   if (query.q) {
     params = params.set('q', query.q);
   }
+  if (query.environment) {
+    params = params.set('environment', query.environment);
+  }
   return params;
 }

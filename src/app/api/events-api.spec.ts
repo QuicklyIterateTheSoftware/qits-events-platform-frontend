@@ -26,6 +26,7 @@ describe('EventsApi', () => {
     payload: '{"branch":"main","repository":"qits-spa-ui-components","version":"2026.801.85149"}',
     description: null,
     parentId: null,
+    environment: null,
     createdAt: '2026-08-01T08:51:49.1Z',
     updatedAt: '2026-08-01T08:51:49.1Z',
   };
@@ -54,13 +55,14 @@ describe('EventsApi', () => {
     await expect(page).resolves.toEqual({ events: [], nextCursor: null });
   });
 
-  it('carries limit, cursor, name, since and q, with the names comma-joined', async () => {
+  it('carries limit, cursor, name, since, q and environment, with the names comma-joined', async () => {
     const page = api.list({
       limit: 200,
       cursor: '2026-08-01T08:52:23.928965Z,0bdbe98d-0000-0000-0000-000000000000',
       name: ['SCMRelease', 'SoftwareRelease'],
       since: '2026-08-01T00:00:00Z',
       q: 'qits-stt',
+      environment: 'dev',
     });
     const request = http.expectOne((candidate) => candidate.url === '/events/api/events');
     expect(request.request.params.get('limit')).toBe('200');
@@ -70,12 +72,13 @@ describe('EventsApi', () => {
     expect(request.request.params.get('name')).toBe('SCMRelease,SoftwareRelease');
     expect(request.request.params.get('since')).toBe('2026-08-01T00:00:00Z');
     expect(request.request.params.get('q')).toBe('qits-stt');
+    expect(request.request.params.get('environment')).toBe('dev');
     request.flush({ events: [], nextCursor: null });
     await expect(page).resolves.toEqual({ events: [], nextCursor: null });
   });
 
   it('leaves an empty name list and a blank search out of the request entirely', async () => {
-    const page = api.list({ name: [], q: '', since: null, cursor: null });
+    const page = api.list({ name: [], q: '', since: null, cursor: null, environment: '' });
     const request = http.expectOne('/events/api/events');
     expect(request.request.params.keys()).toHaveLength(0);
     request.flush({ events: [] });

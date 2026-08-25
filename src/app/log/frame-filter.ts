@@ -22,9 +22,10 @@ export interface FilterableEvent {
   readonly name: string;
   readonly occurredAt: string;
   readonly payload: string | null;
+  readonly environment: string | null;
 }
 
-/** The three filters the log's URL carries. `?cursor=` is a position, not a filter. */
+/** The four filters the log's URL carries. `?cursor=` is a position, not a filter. */
 export interface LogFilters {
   /** The names in force. Empty is every name, including ones this build has never heard of. */
   readonly names: readonly string[];
@@ -32,12 +33,17 @@ export interface LogFilters {
   readonly since: string | null;
   /** A substring of the payload text, or null. */
   readonly q: string | null;
+  /** The tier the publisher stamped, exactly, or null for every tier. */
+  readonly environment: string | null;
 }
 
-/** All three, as the request asks them. */
+/** All four, as the request asks them. */
 export function matchesFilters(event: FilterableEvent, filters: LogFilters): boolean {
   return (
-    named(event, filters.names) && atOrAfter(event, filters.since) && contains(event, filters.q)
+    named(event, filters.names) &&
+    atOrAfter(event, filters.since) &&
+    contains(event, filters.q) &&
+    inTier(event, filters.environment)
   );
 }
 
@@ -87,4 +93,18 @@ function contains(event: FilterableEvent, q: string | null): boolean {
     return true;
   }
   return (event.payload ?? '').toLowerCase().includes(needle);
+}
+
+/**
+ * `environment = :environment` — an exact match on the tier the publisher stamped, mirroring the
+ * server's indexed equality. A frame from before the field, or from a publisher that stamps
+ * nothing, carries null and matches no filter value — exactly as its row would not have been in the
+ * filtered fetch. Blank is no clause at all.
+ */
+function inTier(event: FilterableEvent, environment: string | null): boolean {
+  const tier = (environment ?? '').trim();
+  if (tier.length === 0) {
+    return true;
+  }
+  return event.environment === tier;
 }
