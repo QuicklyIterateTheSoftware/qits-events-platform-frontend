@@ -1,4 +1,4 @@
-# qits-spa-events
+# qits-events-platform-frontend
 
 The event log's frontend: the read-only view of what has happened on this platform and what caused
 what. Served by qits-events itself at the root of `events.<env>.<domain>` through Quinoa. No forms,
@@ -193,6 +193,6 @@ edge at `:8080`, and it begins with a hard reload — every SPA here serves `ind
 ng build
 ```
 
-The bundle lands in `dist/`. It is not deployed from here: qits-events carries this repository as a
-git submodule at `service/src/main/webui` — Quinoa's ui-dir — and builds it into the service image at
-its root, so advancing that gitlink is what ships a change.
+The bundle lands in `dist/`. It is not deployed from here: qits-events-platform-service carries this
+repository as a git submodule at `service/src/main/webui` — Quinoa's ui-dir — and builds it into the
+service image at its root, so advancing that gitlink is what ships a change.
