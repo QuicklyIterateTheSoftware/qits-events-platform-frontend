@@ -1,6 +1,6 @@
 {
   "name": "qits-spa-events",
-  "version": "2026.903.93739",
+  "version": "2026.904.82646",
   "private": true,
   "description": "The events service's frontend: an Angular application that consumes @qits/ui-components from qits' own npm registry. It ships no image — qits-events serves it at the root of its own host.",
   "license": "MIT",
